@@ -7,12 +7,11 @@ from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_openai import OpenAIEmbeddings
+
 
 from dotenv import load_dotenv
 load_dotenv(override=True)
 
-MODEL = "gpt-4.1-nano"
 
 KNOWLEDGE_BASE = str(Path(__file__).parent.parent / "knowledge_base")
 DB_NAME = str(Path(__file__).parent.parent / "vector_db")
