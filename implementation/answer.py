@@ -54,14 +54,41 @@ def fetch_context(question: str) -> list[Document]:
     """
     Retrieve relevant context documents for a question.
     """
-    return retriever.invoke(question, k=RETRIEVAL_K)
+    return retriever.invoke(question)
 
 
-def combined_question(question: str, history: list[dict] = []) -> str:
-    """
-    Combine all the user's messages into a single string.
-    """
-    prior = "\n".join(m["content"] for m in history if m["role"] == "user")
+def combined_question(question: str, history: list[dict] | None = None) -> str:
+    if history is None:
+        history = []
+
+    prior_messages = []
+
+    for message in history:
+        if message["role"] == "user":
+            content = message["content"]
+
+            if isinstance(content, str):
+                prior_messages.append(content)
+
+            elif isinstance(content, list):
+                text = ""
+
+                for item in content:
+                    if isinstance(item, str):
+                        text += item
+                    elif isinstance(item, dict):
+                        if "text" in item:
+                            text += str(item["text"])
+                        elif "content" in item:
+                            text += str(item["content"])
+
+                prior_messages.append(text)
+
+            else:
+                prior_messages.append(str(content))
+
+    prior = "\n".join(prior_messages)
+
     return prior + "\n" + question
 
 def answer_question(question: str, history: list[dict] = []) -> tuple[str, list[Document]]:
