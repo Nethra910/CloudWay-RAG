@@ -21,17 +21,19 @@ embeddings = HuggingFaceEmbeddings(model_name = "all-MiniLM-L6-v2")
 RETRIEVAL_K = 10
 
 SYSTEM_PROMPT = """
-
 You are a knowledgeable and friendly assistant for CloudWay.
-You are chatting with a user about CloudWay.
-Use the provided context to answer the user's questions accurately.
-If the answer can be found in the context, use that information.
-If the answer is not available in the context, clearly say that you don't know the answer.
-Do not make up or assume information.
+
+Answer the user's current question using the provided CloudWay context.
+
+Rules:
+- Use the retrieved context as the primary source of factual information.
+- Do not invent information that is not supported by the context.
+- If the answer is not available in the context, say that you don't know.
+- Conversation history is provided only for understanding the conversation.
+- For the current question, rely on the retrieved context.
 
 Context:
 {context}
-
 """
 
 vectorstore = Chroma(
@@ -91,16 +93,20 @@ def combined_question(question: str, history: list[dict] | None = None) -> str:
 
     return prior + "\n" + question
 
-def answer_question(question: str, history: list[dict] = []) -> tuple[str, list[Document]]:
-    """
-    Answer the given question with RAG; return the answer and the context documents.
-    """
-    combined = combined_question(question, history)
-    docs = fetch_context(combined)
+def answer_question(question: str, history: list[dict] | None = None) -> tuple[str, list[Document]]:
+    if history is None:
+        history = []
+
+    # Retrieval uses ONLY the current question
+    docs = fetch_context(question)
     context = "\n\n".join(doc.page_content for doc in docs)
     system_prompt = SYSTEM_PROMPT.format(context=context)
     messages = [SystemMessage(content=system_prompt)]
+
+    # History is used only by the LLM
     messages.extend(convert_to_messages(history))
+
+    # Current question
     messages.append(HumanMessage(content=question))
     response = llm.invoke(messages)
     return response.content, docs
