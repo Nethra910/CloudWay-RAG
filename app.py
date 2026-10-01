@@ -1,7 +1,7 @@
 import gradio as gr
 from dotenv import load_dotenv
 
-from implementation.answer import answer_question
+from implementation.answer import answer_question, update_conversation_summary
 
 load_dotenv(override=True)
 
@@ -20,11 +20,10 @@ def format_context(context):
     return result
 
 
-def chat(history):
+def chat(history, conversation_summary):
+
     last_message = history[-1]["content"]
 
-    # Gradio 6 can represent message content in different forms.
-    # Make sure the current question is a string.
     if isinstance(last_message, list):
         last_message = "".join(
             item if isinstance(item, str) else str(item)
@@ -33,14 +32,30 @@ def chat(history):
 
     prior = history[:-1]
 
-    answer, context = answer_question(last_message, prior)
+    answer, context = answer_question(
+        last_message,
+        prior,
+        conversation_summary
+    )
 
     history.append({
         "role": "assistant",
         "content": answer
     })
 
-    return history, format_context(context)
+    # Create/update summary when conversation becomes large
+    if len(history) > 10:
+
+        old_history = history[:-4]
+
+        conversation_summary = update_conversation_summary(
+            conversation_summary,
+            old_history
+        )
+
+        history = history[-4:]
+
+    return history, format_context(context), conversation_summary
 
 
 def main():
@@ -62,7 +77,7 @@ def main():
     with gr.Blocks(
         title="CloudWay Expert Assistant"
     ) as ui:
-
+        conversation_summary = gr.State("")
         gr.Markdown(
             "#  CloudWay Expert Assistant\n"
             "Ask me anything about CloudWay!"
@@ -99,8 +114,8 @@ def main():
             outputs=[message, chatbot]
         ).then(
             chat,
-            inputs=chatbot,
-            outputs=[chatbot, context_markdown]
+            inputs=[chatbot, conversation_summary],
+            outputs=[chatbot, context_markdown, conversation_summary]
         )
 
     ui.launch(

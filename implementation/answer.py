@@ -18,19 +18,18 @@ MODEL = "openai/gpt-oss-120b"
 DB_NAME = str(Path(__file__).parent.parent / "vector_db")
 # print(DB_NAME)
 embeddings = HuggingFaceEmbeddings(model_name = "all-MiniLM-L6-v2")
-RETRIEVAL_K = 10
+RETRIEVAL_K = int(os.getenv("RETRIEVAL_K"))
 
 SYSTEM_PROMPT = """
-You are a knowledgeable and friendly assistant for CloudWay.
+You are CloudWay's airline information assistant.
 
-Answer the user's current question using the provided CloudWay context.
+Answer the current question using the retrieved context.
 
-Rules:
-- Use the retrieved context as the primary source of factual information.
-- Do not invent information that is not supported by the context.
-- If the answer is not available in the context, say that you don't know.
-- Conversation history is provided only for understanding the conversation.
-- For the current question, rely on the retrieved context.
+Treat the context as the source of factual information.
+Do not invent policies, prices, or other facts.
+If the context does not support an answer, say so.
+Use conversation history only to understand references in the current question.
+Answer concisely and include relevant details from the context.
 
 Context:
 {context}
@@ -58,55 +57,89 @@ def fetch_context(question: str) -> list[Document]:
     """
     return retriever.invoke(question)
 
+def build_context(docs, max_chars=6000):
+    selected = []
+    total_chars = 0
 
-def combined_question(question: str, history: list[dict] | None = None) -> str:
-    if history is None:
-        history = []
+    for doc in docs:
+        text = doc.page_content.strip()
 
-    prior_messages = []
+        if not text:
+            continue
 
-    for message in history:
-        if message["role"] == "user":
-            content = message["content"]
+        if text in selected:
+            continue
 
-            if isinstance(content, str):
-                prior_messages.append(content)
+        remaining = max_chars - total_chars
 
-            elif isinstance(content, list):
-                text = ""
+        if remaining <= 0:
+            break
 
-                for item in content:
-                    if isinstance(item, str):
-                        text += item
-                    elif isinstance(item, dict):
-                        if "text" in item:
-                            text += str(item["text"])
-                        elif "content" in item:
-                            text += str(item["content"])
+        if len(text) > remaining:
+            break
 
-                prior_messages.append(text)
+        selected.append(text)
+        total_chars += len(text)
 
-            else:
-                prior_messages.append(str(content))
+    return "\n\n".join(selected)
 
-    prior = "\n".join(prior_messages)
+def update_conversation_summary(old_summary, history):
+    if not history:
+        return old_summary
 
-    return prior + "\n" + question
+    summary_prompt = f"""
+You are maintaining a compact conversation memory.
 
-def answer_question(question: str, history: list[dict] | None = None) -> tuple[str, list[Document]]:
+Existing summary:
+{old_summary}
+
+Conversation to summarize:
+{history}
+
+Create a concise summary containing only information that may be useful
+for future questions.
+
+Do not include unnecessary wording.
+Preserve important topics, user preferences, decisions, and references
+to previous questions.
+
+Return only the summary.
+"""
+
+    response = llm.invoke([
+        SystemMessage(content=summary_prompt)
+    ])
+
+    return response.content.strip()
+
+def answer_question(question: str,history: list[dict] | None = None,conversation_summary: str = "") -> tuple[str, list[Document]]:
     if history is None:
         history = []
 
     # Retrieval uses ONLY the current question
     docs = fetch_context(question)
-    context = "\n\n".join(doc.page_content for doc in docs)
+    context = build_context(docs)
+    recent_history = history[-4:] if len(history) > 4 else history
     system_prompt = SYSTEM_PROMPT.format(context=context)
-    messages = [SystemMessage(content=system_prompt)]
-
-    # History is used only by the LLM
-    messages.extend(convert_to_messages(history))
-
-    # Current question
-    messages.append(HumanMessage(content=question))
+    messages = [
+        SystemMessage(content=system_prompt)
+    ]
+    if conversation_summary:
+        messages.append(
+            SystemMessage(
+                content = f"Conversation summary : \n {conversation_summary}"
+            )
+        )
+    messages.extend(convert_to_messages(recent_history))
+    messages.append(
+        HumanMessage(
+            content = f"""
+                Retrieved CloudWay context:
+                {context}
+                current question:
+                {question}
+            """
+        )
+    )
     response = llm.invoke(messages)
     return response.content, docs
