@@ -22,3 +22,7 @@ python-dotenv
 
 # UI
 gradio
+
+fastapi
+uvicorn
+pydantic
