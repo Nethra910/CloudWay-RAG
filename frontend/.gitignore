@@ -2,3 +2,7 @@ node_modules
 dist
 .env
 .env.local
+index.css
+.oxlintrc.json
+package-lock.json
+vite.config.js
