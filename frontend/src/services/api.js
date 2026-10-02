@@ -14,10 +14,10 @@ export const askQuestion = async (
   history = [],
   conversationSummary = "",
 ) => {
-  const response = await api.post("/ask", {
-    question,
+  const response = await api.post("/chat", {
+    message: question,
     history,
-    conversation_summary: conversationSummary,
+    summary: conversationSummary,
   });
 
   return response.data;

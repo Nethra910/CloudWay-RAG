@@ -2,9 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
+import { askQuestion } from "./services/api";
 import "./App.css";
-
-const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 const STARTERS = [
   "How much cabin baggage can I carry?",
@@ -22,6 +21,7 @@ const prettyName = (path) =>
 
 function Source({ file, snippet }) {
   const [open, setOpen] = useState(false);
+
   return (
     <li className="source">
       <button
@@ -31,13 +31,17 @@ function Source({ file, snippet }) {
       >
         {prettyName(file)}
       </button>
+
       {open && <p className="snippet">{snippet}…</p>}
     </li>
   );
 }
 
 function Message({ m }) {
-  if (m.role === "user") return <div className="msg user">{m.content}</div>;
+  if (m.role === "user") {
+    return <div className="msg user">{m.content}</div>;
+  }
+
   return (
     <div className="msg bot">
       <ReactMarkdown
@@ -53,12 +57,14 @@ function Message({ m }) {
       >
         {m.content}
       </ReactMarkdown>
+
       {m.sources?.length > 0 && (
         <details className="sources">
           <summary>
             Found in {m.sources.length} document
             {m.sources.length > 1 ? "s" : ""}
           </summary>
+
           <ul>
             {m.sources.map((s) => (
               <Source key={s.file} {...s} />
@@ -75,47 +81,95 @@ export default function App() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  // Display history stays complete; only unsummarised turns go to the model.
-  const memory = useRef({ text: "", consumed: 0 });
+
+  // Complete conversation stays in messages.
+  // Only unsummarised messages are sent to FastAPI.
+  const memory = useRef({
+    text: "",
+    consumed: 0,
+  });
+
   const endRef = useRef(null);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    endRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "end",
+    });
   }, [messages, busy]);
 
   async function send(text) {
     const q = text.trim();
-    if (!q || busy) return;
+
+    if (!q || busy) {
+      return;
+    }
+
     setError("");
     setInput("");
+
+    /*
+      messages contains the complete UI conversation.
+
+      consumed tells us how many old messages have already
+      been included in the conversation summary.
+
+      Therefore, only send the remaining messages.
+    */
     const prior = messages
       .slice(memory.current.consumed)
-      .map(({ role, content }) => ({ role, content }));
-    setMessages((m) => [...m, { role: "user", content: q }]);
+      .map(({ role, content }) => ({
+        role,
+        content,
+      }));
+
+    // Show user's message immediately.
+    setMessages((current) => [
+      ...current,
+      {
+        role: "user",
+        content: q,
+      },
+    ]);
+
     setBusy(true);
+
     try {
-      const res = await fetch(`${API}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: q,
-          history: prior,
-          summary: memory.current.text,
-        }),
-      });
-      if (!res.ok) throw new Error(res.status);
-      const data = await res.json();
+      const data = await askQuestion(q, prior, memory.current.text);
+
+      /*
+        FastAPI returns:
+
+        {
+          answer,
+          sources,
+          summary,
+          consumed
+        }
+      */
+
       memory.current = {
-        text: data.summary,
-        consumed: memory.current.consumed + data.consumed,
+        text: data.summary || memory.current.text,
+        consumed: memory.current.consumed + (data.consumed || 0),
       };
-      setMessages((m) => [
-        ...m,
-        { role: "assistant", content: data.answer, sources: data.sources },
+
+      // Add assistant response.
+      setMessages((current) => [
+        ...current,
+        {
+          role: "assistant",
+          content: data.answer,
+          sources: data.sources || [],
+        },
       ]);
-    } catch {
-      setMessages((m) => m.slice(0, -1));
+    } catch (error) {
+      console.error("Chat request failed:", error);
+
+      // Remove the user message because the request failed.
+      setMessages((current) => current.slice(0, -1));
+
       setInput(q);
+
       setError(
         "Couldn't reach the assistant. Make sure the API is running on port 8000, then send again.",
       );
@@ -126,8 +180,14 @@ export default function App() {
 
   function newChat() {
     setMessages([]);
+    setInput("");
     setError("");
-    memory.current = { text: "", consumed: 0 };
+
+    // Completely reset conversational memory.
+    memory.current = {
+      text: "",
+      consumed: 0,
+    };
   }
 
   return (
@@ -136,6 +196,7 @@ export default function App() {
         <span className="brand">
           CloudWay<b>24</b>
         </span>
+
         {messages.length > 0 && (
           <button className="ghost" onClick={newChat}>
             New chat
@@ -147,10 +208,12 @@ export default function App() {
         {messages.length === 0 ? (
           <section className="empty">
             <h1>Ask about flights, bags or bookings.</h1>
+
             <p>
               Answers come from CloudWay's own policy documents, and every
               answer shows where it was found.
             </p>
+
             <ul>
               {STARTERS.map((s) => (
                 <li key={s}>
@@ -164,6 +227,7 @@ export default function App() {
             {messages.map((m, i) => (
               <Message key={i} m={m} />
             ))}
+
             {busy && (
               <div className="msg bot pending">
                 Checking the policy documents
@@ -172,6 +236,7 @@ export default function App() {
             )}
           </div>
         )}
+
         <div ref={endRef} />
       </main>
 
@@ -181,11 +246,13 @@ export default function App() {
             {error}
           </p>
         )}
+
         <div className="composer">
           <textarea
             rows={1}
             value={input}
             placeholder="Type your question"
+            disabled={busy}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
@@ -194,10 +261,12 @@ export default function App() {
               }
             }}
           />
+
           <button onClick={() => send(input)} disabled={busy || !input.trim()}>
             Send
           </button>
         </div>
+
         <p className="hint">Enter to send, Shift+Enter for a new line</p>
       </footer>
     </div>
