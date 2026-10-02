@@ -1,8 +1,12 @@
-node_modules
-dist
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment variables
 .env
 .env.local
-index.css
-.oxlintrc.json
-package-lock.json
-vite.config.js
+
+# macOS
+.DS_Store
