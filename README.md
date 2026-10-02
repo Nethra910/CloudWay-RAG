@@ -11,7 +11,25 @@ A Retrieval-Augmented Generation (RAG) chatbot that answers questions about **Cl
 - **Semantic search**: Hugging Face `all-MiniLM-L6-v2` embeddings with a Chroma vector database
 - **Fast inference**: Groq-hosted LLM
 - **Conversation memory**: older messages are summarised automatically so follow-up questions keep their context
-- **Transparent UI**: a Gradio app showing the chat on one side and the retrieved context and sources on the other
+- **React frontend**: conversational WhatsApp-style interface for interacting with the RAG assistant
+- **FastAPI backend**: REST API connects the React frontend with the RAG pipeline
+- **Transparent UI**: retrieved sources are displayed along with every response
+
+---
+
+## 🎬 Demo
+
+<p align="center">
+  <img src="./screenshots/pic1.png" width="30%">&nbsp;&nbsp;&nbsp;
+  <img src="./screenshots/pic2.png" width="30%">&nbsp;&nbsp;&nbsp;
+  <img src="./screenshots/pic3.png" width="30%">
+</p>
+
+<p align="center">
+  <img src="./screenshots/pic4.png" width="30%">&nbsp;&nbsp;&nbsp;
+  <img src="./screenshots/pic5.png" width="30%">&nbsp;&nbsp;&nbsp;
+  <img src="./screenshots/evaluation.png" width="30%">
+</p>
 
 ---
 
@@ -36,20 +54,27 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    U[👤 User question<br/>Gradio chat] --> Q[Embed question]
+    U[👤 User question<br/>React frontend] --> F[FastAPI<br/>/chat endpoint]
+    F --> Q[Embed question]
     Q --> R[Similarity search<br/>in Chroma]
     R --> T[Top-k relevant chunks]
     T --> P[Build prompt:<br/>instructions + context +<br/>conversation summary +<br/>recent history + question]
     P --> L[Groq LLM]
     L --> A[💬 Answer]
-    T --> S[📚 Retrieved context<br/>+ sources shown in UI]
+    A --> F
+    T --> S[📚 Retrieved sources]
+    S --> F
+    F --> UI[React frontend]
 ```
 
-1. The user's question is embedded with the same model used during ingestion.
-2. Chroma returns the most semantically similar chunks.
-3. A prompt is built from the retrieved context, the conversation summary, the recent chat history and the question.
-4. The Groq LLM generates the answer.
-5. The UI displays the answer along with the retrieved chunks and their source files.
+1. The user enters a question in the React frontend.
+2. The question is sent to the FastAPI `/chat` endpoint.
+3. The question is embedded with the same model used during ingestion.
+4. Chroma returns the most semantically similar chunks.
+5. A prompt is built from the retrieved context, the conversation summary, recent chat history and the question.
+6. The Groq LLM generates the answer.
+7. FastAPI returns the answer and source information to the React frontend.
+8. The React UI displays the response and retrieved sources.
 
 ### Phase 3: Conversation memory
 
@@ -61,28 +86,47 @@ flowchart TD
 
 ## 🛠️ Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Orchestration | LangChain |
-| Embeddings | Hugging Face `all-MiniLM-L6-v2` |
-| Vector database | Chroma |
-| LLM | Groq (`<MODEL_NAME>`) |
-| UI | Gradio |
-| Language | Python 3.10+ |
+| Layer             | Technology                      |
+| ----------------- | ------------------------------- |
+| Frontend          | React + Vite                    |
+| Backend           | FastAPI                         |
+| API Communication | Axios                           |
+| Orchestration     | LangChain                       |
+| Embeddings        | Hugging Face `all-MiniLM-L6-v2` |
+| Vector database   | Chroma                          |
+| LLM               | Groq (`openai/gpt-oss-120b`)    |
+| Language          | Python 3.10+                    |
+| Styling           | Tailwind CSS                    |
 
 ---
 
 ## 📁 Project Structure
 
-```
+```text
 CloudWay-RAG/
-├── app.py                 # Gradio UI and chat loop
+├── api/
+│   └── main.py             # FastAPI application and /chat endpoint
+│
+├── frontend/
+│   ├── src/
+│   │   ├── components/     # React UI components
+│   │   ├── App.jsx         # Main chat interface
+│   │   └── api.js          # API communication
+│   ├── package.json
+│   └── vite.config.js
+│
 ├── implementation/
-│   ├── ingest.py          # Loads PDFs, chunks, embeds, builds the vector DB
-│   └── answer.py          # Retrieval, prompt building, LLM call, summarisation
-├── knowledge_base/        # 40+ CloudWay 24 PDF documents
-├── vector_db/             # Persisted Chroma database
+│   ├── ingest.py           # Loads PDFs, chunks, embeds, builds vector DB
+│   └── answer.py           # Retrieval, prompt building, LLM call, summarisation
+│
+├── evaluation/
+│   ├── eval.py             # Retrieval evaluation
+│   └── test.py             # Evaluation tests
+│
+├── knowledge_base/         # CloudWay 24 PDF documents
+├── vector_db/              # Persisted Chroma database
 ├── requirements.txt
+├── evaluator.py
 └── README.md
 ```
 
@@ -97,7 +141,7 @@ git clone https://github.com/Nethra910/CloudWay-RAG.git
 cd CloudWay-RAG
 ```
 
-### 2. Create a virtual environment
+### 2. Create a Python virtual environment
 
 ```bash
 python -m venv venv
@@ -105,56 +149,108 @@ source venv/bin/activate        # macOS / Linux
 venv\Scripts\activate           # Windows
 ```
 
-### 3. Install dependencies
+### 3. Install backend dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4. Configure environment variables
+### 4. Install frontend dependencies
+
+```bash
+cd frontend
+npm install
+```
+
+### 5. Configure environment variables
 
 Create a `.env` file in the project root:
 
 ```env
 GROQ_API_KEY=your_groq_api_key_here
+RETRIEVAL_K=5
+CHUNK_SIZE=500
+CHUNK_OVERLAP=200
 ```
 
 Get a free key from the [Groq Console](https://console.groq.com/).
 
-### 5. Build the vector database
+### 6. Build the vector database
+
+From the project root:
 
 ```bash
 python implementation/ingest.py
 ```
 
-### 6. Launch the assistant
+### 7. Start the FastAPI backend
+
+From the project root:
 
 ```bash
-python app.py
+uvicorn api.main:app --reload
 ```
 
-The Gradio app opens in your browser.
+The API will run at:
+
+```text
+http://localhost:8000
+```
+
+### 8. Start the React frontend
+
+Open another terminal:
+
+```bash
+cd frontend
+npm run dev
+```
+
+The React application will run at:
+
+```text
+http://localhost:5173
+```
 
 ---
 
 ## 💬 Example Questions
 
-- *What is the baggage allowance for economy passengers?*
-- *What is CloudWay's policy for cancelled or delayed flights?*
-- *What assistance is available for passengers with reduced mobility?*
-- *Can I travel with a pet?*
+- _What is the baggage allowance for economy passengers?_
+- _What is CloudWay's policy for cancelled or delayed flights?_
+- _What assistance is available for passengers with reduced mobility?_
+- _Can I travel with a pet?_
 
 ---
 
 ## ⚙️ Configuration
 
-| Setting | Value |
-|---|---|
-| Embedding model | `all-MiniLM-L6-v2` |
-| Chunk size / overlap | `<CHUNK_SIZE>` / `<CHUNK_OVERLAP>` |
-| Retrieved chunks (top-k) | `<K>` |
-| LLM | `<MODEL_NAME>` on Groq |
-| Summarise after | 10 messages (keeps the last 4) |
+| Setting                  | Value                              |
+| ------------------------ | ---------------------------------- |
+| Embedding model          | `all-MiniLM-L6-v2`                 |
+| Chunk size / overlap     | `<CHUNK_SIZE>` / `<CHUNK_OVERLAP>` |
+| Retrieved chunks (top-k) | `<K>`                              |
+| LLM                      | `openai/gpt-oss-120b` on Groq      |
+| Summarise after          | 10 messages (keeps the last 4)     |
+
+---
+
+## 📊 Evaluation
+
+The project includes retrieval evaluation to measure how effectively the system finds relevant documents.
+
+The evaluation includes metrics such as:
+
+- **Mean Reciprocal Rank (MRR)**
+- **nDCG**
+- **Keyword Coverage**
+- **Keyword Matching**
+
+Run the evaluation with:
+
+```bash
+python -m evaluation.eval
+```
 
 ---
 
@@ -163,8 +259,9 @@ The Gradio app opens in your browser.
 - Hybrid search (keyword + semantic) and reranking
 - Query rewriting for follow-up questions
 - Source citations inside the answer text
-- Evaluation with RAGAS or a test question set
-- Deployment on Hugging Face Spaces or Docker
+- Evaluation with RAGAS or a larger test question set
+- Docker-based deployment
+- Improved retrieval and response optimization
 
 ---
 
@@ -172,6 +269,7 @@ The Gradio app opens in your browser.
 
 - CloudWay 24 is a fictional airline created for learning and demonstration.
 - Answers are limited to what the knowledge base contains.
+- The React frontend communicates with the RAG system through the FastAPI backend.
 
 ---
 
