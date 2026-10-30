@@ -1,28 +1,16 @@
-# LangChain
+fastapi
+uvicorn[standard]
+pydantic
+python-dotenv
+
 langchain
 langchain-community
 langchain-core
+langchain-text-splitters
 langchain-huggingface
 langchain-chroma
-
-# PDF loading
-pypdf
-
-# Vector database
-chromadb
-
-# Embeddings
-sentence-transformers
-
-# LLM
 langchain-groq
 
-# Environment variables
-python-dotenv
-
-# UI
-gradio
-
-fastapi
-uvicorn
-pydantic
+pypdf
+chromadb
+sentence-transformers
