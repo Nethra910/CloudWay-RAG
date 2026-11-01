@@ -14,7 +14,7 @@ frontend/
 node_modules/
 
 vector_db/
-knowledge_base/
+
 
 .DS_Store
 .ipynb_checkpoints/
