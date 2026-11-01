@@ -1,4 +1,3 @@
-
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -13,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt .
 
-# Install CPU-only PyTorch for ARM64
+# Install CPU-only PyTorch
 RUN pip install --no-cache-dir \
     --index-url https://download.pytorch.org/whl/cpu \
     "torch==2.12.0+cpu"
@@ -21,8 +20,15 @@ RUN pip install --no-cache-dir \
 # Install the remaining RAG dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy application code
 COPY api/ ./api/
 COPY implementation/ ./implementation/
+
+# Copy PDF knowledge base
+COPY knowledge_base/ ./knowledge_base/
+
+# Create ChromaDB vector store from the PDF documents
+RUN python -m implementation.ingest
 
 EXPOSE 8000
 
