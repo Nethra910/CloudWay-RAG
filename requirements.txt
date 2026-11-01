@@ -1,8 +1,10 @@
-fastapi
-uvicorn[standard]
-pydantic
-python-dotenv
 
+# API
+fastapi
+uvicorn
+pydantic
+
+# LangChain
 langchain
 langchain-community
 langchain-core
@@ -11,6 +13,14 @@ langchain-huggingface
 langchain-chroma
 langchain-groq
 
+# PDF processing
 pypdf
+
+# Vector database
 chromadb
+
+# Embeddings
 sentence-transformers
+
+# Environment
+python-dotenv
